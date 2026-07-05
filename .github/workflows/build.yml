@@ -11,18 +11,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 直接用官方在 Docker Hub 上已经构建好的 kivy/buildozer 镜像，
-      # 不走 ArtemSBulgakov/buildozer-action 自带的、经常构建失败的 Dockerfile。
-      - name: Build APK with official Buildozer image
+      # 构建 APK（加入日志压缩 + 可定位错误）
+      - name: Build APK with official Buildozer image (compressed logs)
         run: |
+          set -o pipefail
+
           docker run --rm \
             -v "${{ github.workspace }}":/home/user/hostcwd \
             kivy/buildozer:latest \
-            android debug
+            android debug 2>&1 | tee build.log
+
+      # 失败时自动输出关键错误（核心增强）
+      - name: Show error summary (only if failed)
+        if: failure()
+        run: |
+          echo "===== ERROR KEYWORDS ====="
+          grep -i "error\|exception\|failed\|traceback\|err!" build.log || true
+
+          echo "===== LAST 200 LINES ====="
+          tail -n 200 build.log || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: mycgc-apk
           path: bin/*.apk
-
