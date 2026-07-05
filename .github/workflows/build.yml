@@ -11,28 +11,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 构建 APK（加入日志压缩 + 可定位错误）
-      - name: Build APK with official Buildozer image (compressed logs)
+      # 直接用官方在 Docker Hub 上已经构建好的 kivy/buildozer 镜像，
+      # 不走 ArtemSBulgakov/buildozer-action 自带的、经常构建失败的 Dockerfile。
+      # 用 tee 把完整输出同时存到 build_full.log，方便失败时定位。
+      - name: Build APK with official Buildozer image
         run: |
           set -o pipefail
-
           docker run --rm \
             -v "${{ github.workspace }}":/home/user/hostcwd \
             kivy/buildozer:latest \
-            android debug 2>&1 | tee build.log
+            android debug 2>&1 | tee build_full.log
 
-      # 失败时自动输出关键错误（核心增强）
-      - name: Show error summary (only if failed)
+      # 只有在上一步失败时才运行：自动从完整日志里挑出真正报错的那一段，
+      # 直接打印在这一步的输出里，不用再手动翻。
+      - name: Extract real error (only runs on failure)
         if: failure()
         run: |
-          echo "===== ERROR KEYWORDS ====="
-          grep -i "error\|exception\|failed\|traceback\|err!" build.log || true
+          echo "################ 关键报错定位 ################"
+          grep -n -iE "error|exception|traceback|fatal|failed to" build_full.log | tail -n 60 || true
+          echo ""
+          echo "################ 报错前后200行上下文 ################"
+          LINE=$(grep -n -iE "error|exception|traceback|fatal" build_full.log | tail -n 1 | cut -d: -f1)
+          if [ -n "$LINE" ]; then
+            START=$((LINE > 200 ? LINE - 200 : 1))
+            END=$((LINE + 20))
+            sed -n "${START},${END}p" build_full.log
+          else
+            echo "没匹配到关键词，请下载 full-build-log 这个 artifact 自己看完整日志"
+          fi
 
-          echo "===== LAST 200 LINES ====="
-          tail -n 200 build.log || true
+      # 无论成功失败都上传完整日志，保底能下载下来自己查
+      - name: Upload full build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-build-log
+          path: build_full.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: mycgc-apk
           path: bin/*.apk
+
