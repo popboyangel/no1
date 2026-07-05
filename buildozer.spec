@@ -22,7 +22,6 @@ android.ndk = 25b
 android.accept_sdk_license = True
 android.enable_androidx = True
 android.archs = arm64-v8a
-p4a.branch = develop
 
 # 后台前台服务：对应 service/main.py，类名会是 Service + Monitor.capitalize() = ServiceMonitor
 services = monitor:service/main.py
